@@ -1,2 +1,3 @@
 # 忽略 pytest 相关的文件夹
 pytest/
+test/
