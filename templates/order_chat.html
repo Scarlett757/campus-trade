@@ -1,0 +1,198 @@
+{% extends "basic.html" %}
+{% block title %}订单沟通{% endblock %}
+
+{% block main %}
+<div class="container mx-auto px-4 py-8 max-w-3xl h-[80vh] flex flex-col">
+    <!-- 顶部信息栏 -->
+    <div class="bg-white p-4 rounded-t-2xl shadow-sm border-b flex justify-between items-center">
+        <div>
+            <h2 class="font-bold text-lg">订单沟通</h2>
+            <p class="text-xs text-slate-500">订单号：<span id="order-no-display">{{ order_id }}</span></p>
+        </div>
+        <a href="/orders" class="text-sm text-primary-600 hover:underline">返回订单列表</a>
+    </div>
+
+    <!-- 聊天区域 -->
+    <div id="chat-box" class="flex-1 bg-slate-50 p-4 overflow-y-auto space-y-4">
+        <!-- 消息将通过 JS 动态插入 -->
+        <div class="text-center text-slate-400 text-sm mt-10">加载中...</div>
+    </div>
+
+    <!-- 输入区域 -->
+    <div class="bg-white p-4 rounded-b-2xl shadow-sm border-t">
+        <!-- ✅ 确保 ID 与 JS 中一致 -->
+        <form id="chat-form" class="flex gap-3">
+            <input type="text" id="msg-input" placeholder="输入消息，例如：'老板能便宜点吗？'..."
+                class="flex-1 px-4 py-3 bg-slate-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-primary-500 outline-none transition">
+            <button type="submit" class="px-6 py-3 bg-primary-500 text-white font-bold rounded-xl hover:bg-primary-600 transition shadow-md active:scale-95">
+                发送
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+    // ✅ 核心修复：等待 DOM 完全加载后再执行，防止 getElementById 返回 null
+    document.addEventListener('DOMContentLoaded', function() {
+        
+        const orderId = {{ order_id }};
+        const currentUserId = {{ g.user.id }};
+
+        console.log(`[Chat System] 初始化成功 -> 订单ID: ${orderId}, 当前用户ID: ${currentUserId}`);
+
+        // 获取 DOM 元素
+        const chatBox = document.getElementById('chat-box');
+        const chatForm = document.getElementById('chat-form');
+        const msgInput = document.getElementById('msg-input');
+
+        // 安全检查：如果元素不存在，停止执行并报错
+        if (!chatBox || !chatForm || !msgInput) {
+            console.error('❌ 严重错误：无法找到聊天界面元素 (chat-box, chat-form, msg-input)。请检查 HTML 结构。');
+            return;
+        }
+
+        // 1. 加载消息函数
+        async function loadMessages() {
+            try {
+                const res = await fetch(`/api/order/${orderId}/messages`);
+                if (!res.ok) {
+                    const errData = await res.json();
+                    throw new Error(errData.error || '加载失败');
+                }
+                const msgs = await res.json();
+
+                // 清空并重新渲染
+                chatBox.innerHTML = '';
+                
+                if (msgs.length === 0) {
+                    chatBox.innerHTML = '<div class="text-center text-slate-400 text-sm mt-10">暂无消息，快来发起第一句沟通吧~</div>';
+                } else {
+                    msgs.forEach(msg => {
+                        appendMessage(msg);
+                    });
+                }
+                scrollToBottom();
+            } catch (e) {
+                console.error("加载消息异常:", e);
+                // 仅在列表为空时显示错误，避免轮询时闪烁
+                if (chatBox.children.length === 0) {
+                    chatBox.innerHTML = `<div class="text-center text-red-500 text-sm p-4">加载失败: ${e.message}<br><button onclick="loadMessages()" class="mt-2 text-xs underline">重试</button></div>`;
+                }
+            }
+        }
+
+        // 2. 渲染单条消息函数
+        function appendMessage(msg) {
+            const div = document.createElement('div');
+            
+            // ✅ 核心逻辑：判断是否是自己发的消息
+            // 使用 parseInt 确保数字比较安全
+            const isMe = parseInt(msg.sender_id) === parseInt(currentUserId);
+
+            // 系统消息特殊样式
+            if (msg.type === 'system') {
+                div.className = 'text-center my-4 animate-fade-in';
+                div.innerHTML = `<span class="bg-slate-200 text-slate-600 text-xs px-3 py-1 rounded-full shadow-sm">${msg.content}</span>`;
+            } else {
+                // 普通消息布局
+                div.className = `flex gap-3 ${isMe ? 'flex-row-reverse' : ''} animate-slide-up`;
+                
+                // 头像生成
+                let avatarHtml = '';
+                if (isMe) {
+                    avatarHtml = `<div class="w-8 h-8 rounded-full bg-primary-500 text-white flex items-center justify-center text-xs font-bold shadow-md shrink-0">我</div>`;
+                } else {
+                    const nameChar = (msg.sender || '对方')[0].toUpperCase();
+                    avatarHtml = `<div class="w-8 h-8 rounded-full bg-slate-300 text-slate-600 flex items-center justify-center text-xs font-bold shadow-sm shrink-0">${nameChar}</div>`;
+                }
+
+                // 气泡样式
+                const bubbleClass = isMe
+                    ? 'bg-primary-500 text-white rounded-tr-none shadow-md'
+                    : 'bg-white text-slate-700 rounded-tl-none shadow-sm border border-slate-100';
+
+                div.innerHTML = `
+                    ${avatarHtml}
+                    <div class="${bubbleClass} p-3 rounded-2xl text-sm max-w-[75%] break-words leading-relaxed relative group">
+                        ${msg.content.replace(/\n/g, '<br>')}
+                        <div class="text-[10px] opacity-70 mt-1 text-right">${msg.time}</div>
+                    </div>
+                `;
+            }
+            chatBox.appendChild(div);
+        }
+
+        // 3. 滚动到底部
+        function scrollToBottom() {
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // 4. 监听表单提交
+        chatForm.addEventListener('submit', async (e) => {
+            e.preventDefault(); // 阻止默认刷新
+            
+            const text = msgInput.value.trim();
+            if (!text) return;
+
+            // 锁定输入框防止重复提交
+            const originalPlaceholder = msgInput.placeholder;
+            msgInput.disabled = true;
+            msgInput.placeholder = "发送中...";
+
+            // ✅ 乐观更新：先在界面上显示消息
+            appendMessage({
+                sender_id: currentUserId,
+                content: text,
+                type: 'text',
+                time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                sender: "我"
+            });
+            
+            msgInput.value = '';
+            scrollToBottom();
+
+            try {
+                // 发送请求到后端
+                const res = await fetch(`/api/order/${orderId}/messages`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({content: text})
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.error || '服务器响应错误');
+                }
+                
+                // 发送成功，这里可以选择立即刷新一次列表以同步时间戳，或者依赖轮询
+                // loadMessages(); 
+
+            } catch (e) {
+                console.error("发送失败:", e);
+                alert('❌ 发送失败: ' + e.message);
+                // 恢复输入框
+                msgInput.disabled = false;
+                msgInput.placeholder = originalPlaceholder;
+                msgInput.focus();
+            } finally {
+                // 确保最终状态恢复
+                if (!msgInput.disabled) {
+                    msgInput.disabled = false;
+                    msgInput.placeholder = originalPlaceholder;
+                }
+            }
+        });
+
+        // 5. 初始化运行
+        loadMessages();
+
+        // 6. 开启轮询 (每 3 秒检查新消息)
+        const pollInterval = setInterval(loadMessages, 3000);
+        
+        // 页面关闭时清理定时器
+        window.addEventListener('beforeunload', () => {
+            clearInterval(pollInterval);
+        });
+    });
+</script>
+{% endblock %}

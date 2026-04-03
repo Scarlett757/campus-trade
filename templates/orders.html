@@ -1,0 +1,146 @@
+{% extends "basic.html" %}
+{% block title %}我的订单{% endblock %}
+
+{% block main %}
+<div class="container mx-auto px-4 py-8 max-w-4xl">
+    <h1 class="text-2xl font-bold text-slate-800 mb-6">我的订单</h1>
+
+    <!-- Tab 切换 -->
+    <div class="flex gap-4 mb-6 border-b border-slate-200">
+        <button onclick="switchTab('buyer')" id="tab-buyer" class="pb-3 px-4 border-b-2 border-primary-500 text-primary-600 font-bold transition-colors">
+            我买的
+        </button>
+        <button onclick="switchTab('seller')" id="tab-seller" class="pb-3 px-4 border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-medium transition-colors">
+            我卖的
+        </button>
+    </div>
+
+    <!-- 订单列表容器 -->
+    <div id="order-list" class="space-y-4">
+        <!-- 动态加载内容 -->
+        <div class="text-center py-10 text-slate-400">加载中...</div>
+    </div>
+</div>
+
+<script>
+    let currentRole = 'buyer';
+
+    async function switchTab(role) {
+        currentRole = role;
+        // 更新 Tab 样式
+        const buyerBtn = document.getElementById('tab-buyer');
+        const sellerBtn = document.getElementById('tab-seller');
+        
+        if (role === 'buyer') {
+            buyerBtn.className = "pb-3 px-4 border-b-2 border-primary-500 text-primary-600 font-bold transition-colors";
+            sellerBtn.className = "pb-3 px-4 border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-medium transition-colors";
+        } else {
+            sellerBtn.className = "pb-3 px-4 border-b-2 border-primary-500 text-primary-600 font-bold transition-colors";
+            buyerBtn.className = "pb-3 px-4 border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-medium transition-colors";
+        }
+        
+        await loadOrders();
+    }
+
+    async function loadOrders() {
+        const listEl = document.getElementById('order-list');
+        listEl.innerHTML = '<div class="text-center py-10 text-slate-400">加载中...</div>';
+
+        try {
+            const res = await fetch(`/api/orders?role=${currentRole}`);
+            const orders = await res.json();
+
+            if (orders.length === 0) {
+                listEl.innerHTML = `<div class="text-center py-10 bg-white rounded-2xl shadow-sm">
+                    <p class="text-slate-400">暂无${currentRole === 'buyer' ? '购买' : '销售'}记录</p>
+                </div>`;
+                return;
+            }
+
+            listEl.innerHTML = '';
+            orders.forEach(order => {
+                const isSeller = currentRole === 'seller';
+                const statusColor = {
+                    'paid': 'bg-orange-100 text-orange-700',
+                    'shipped': 'bg-blue-100 text-blue-700',
+                    'completed': 'bg-green-100 text-green-700',
+                    'cancelled': 'bg-red-100 text-red-700'
+                }[order.status] || 'bg-slate-100 text-slate-700';
+
+                let actionBtn = '';
+                // 如果是卖家且待发货，显示发货按钮
+                if (isSeller && order.status === 'paid') {
+                    actionBtn = `
+                        <button onclick="shipOrder(${order.id})" class="px-4 py-2 bg-primary-500 text-white text-sm font-bold rounded-lg hover:bg-primary-600 transition">
+                            立即发货
+                        </button>
+                    `;
+                } else if (order.status !== 'cancelled') {
+                    actionBtn = `
+                        <a href="/order/${order.id}/chat" class="px-4 py-2 bg-slate-100 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-200 transition">
+                            查看物流/联系${isSeller ? '买家' : '卖家'}
+                        </a>
+                    `;
+                }
+
+                const html = `
+                    <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-4">
+                        <!-- 商品图 -->
+                        <div class="w-full md:w-24 h-24 bg-slate-100 rounded-xl overflow-hidden flex-shrink-0">
+                            ${order.product_image ? 
+                                `<img src="${order.product_image}" class="w-full h-full object-cover">` : 
+                                `<div class="w-full h-full flex items-center justify-center text-slate-400 text-xs">无图</div>`
+                            }
+                        </div>
+                        
+                        <!-- 信息 -->
+                        <div class="flex-1 flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-start">
+                                    <h3 class="font-bold text-slate-800 line-clamp-1">${order.product_name}</h3>
+                                    <span class="px-2 py-1 rounded text-xs font-bold ${statusColor}">${order.status_text}</span>
+                                </div>
+                                <p class="text-sm text-slate-500 mt-1">交易对象：${order.counterpart_name}</p>
+                                <p class="text-xs text-slate-400">订单号：${order.order_no}</p>
+                            </div>
+                            
+                            <div class="flex justify-between items-end mt-3">
+                                <span class="text-lg font-bold text-red-500">¥${order.price}</span>
+                                <div class="flex gap-2">
+                                    ${actionBtn}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                listEl.innerHTML += html;
+            });
+
+        } catch (e) {
+            listEl.innerHTML = '<div class="text-center py-10 text-red-500">加载失败，请刷新重试</div>';
+            console.error(e);
+        }
+    }
+
+    async function shipOrder(orderId) {
+        if (!confirm('确认已发货吗？此操作将通知买家。')) return;
+
+        try {
+            const res = await fetch(`/api/order/${orderId}/ship`, { method: 'POST' });
+            const data = await res.json();
+            
+            if (res.ok && data.success) {
+                alert('✅ 发货成功！买家已收到通知。');
+                loadOrders(); // 刷新列表
+            } else {
+                alert('❌ ' + (data.error || '操作失败'));
+            }
+        } catch (e) {
+            alert('网络错误');
+        }
+    }
+
+    // 初始化加载
+    switchTab('buyer');
+</script>
+{% endblock %}

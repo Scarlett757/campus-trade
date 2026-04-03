@@ -1,0 +1,27 @@
+
+body {
+    font-family: 'Noto Sans SC', sans-serif;
+    background-color: #f8f9fa;
+}
+
+.category-tab {
+    transition: all 0.3s ease;
+}
+
+.category-tab:hover {
+    color: #059669;
+}
+
+.category-tab.active {
+    color: #059669;
+    border-bottom: 3px solid #059669;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+.hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}

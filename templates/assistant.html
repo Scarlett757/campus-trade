@@ -1,0 +1,126 @@
+{% extends "basic.html" %}
+{% block title %}AI 购物助手{% endblock %}
+
+{% block main %}
+<div class="container mx-auto px-4 py-8 max-w-3xl">
+    <div class="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100 h-[600px] flex flex-col">
+        <!-- 头部 -->
+        <div class="bg-gradient-to-r from-primary-500 to-secondary-500 p-6 text-white">
+            <h2 class="text-xl font-bold flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+                Campus Trade AI 助手
+            </h2>
+            <p class="text-sm opacity-90 mt-1">试着问我：“300 元左右有什么相机推荐？”</p>
+        </div>
+
+        <!-- 聊天区域 -->
+        <div id="chat-box" class="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50">
+            <!-- 欢迎消息 -->
+            <div class="flex gap-3">
+                <div class="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-secondary-500 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">AI</div>
+                <div class="bg-white p-4 rounded-2xl rounded-tl-none shadow-sm text-slate-700 text-sm leading-relaxed max-w-[80%]">
+                    你好呀！我是你的 campus trade 助手 🎓。我可以帮你找相机、自行车、教材等各种好物。你想找点什么？
+                </div>
+            </div>
+        </div>
+
+        <!-- 输入区域 -->
+        <div class="p-4 bg-white border-t border-slate-100">
+            <form id="chat-form" class="flex gap-3">
+                <input type="text" id="user-input" placeholder="输入你的问题..." 
+                    class="flex-1 px-4 py-3 bg-slate-100 rounded-xl focus:bg-white focus:ring-2 focus:ring-primary-500 outline-none transition">
+                <button type="submit" id="send-btn"
+                    class="px-6 py-3 bg-gradient-to-r from-primary-500 to-secondary-500 text-white font-bold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                    发送
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    const chatBox = document.getElementById('chat-box');
+    const chatForm = document.getElementById('chat-form');
+    const userInput = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+
+    // 修改 appendMessage 函数，增加一个 isHtml 参数
+    function appendMessage(role, text, isHtml = false) {
+        const div = document.createElement('div');
+        div.className = `flex gap-3 ${role === 'user' ? 'flex-row-reverse' : ''}`;
+
+        const avatar = role === 'user'
+            ? `<div class="w-8 h-8 rounded-full bg-slate-300 flex-shrink-0 flex items-center justify-center text-slate-600 text-xs font-bold">我</div>`
+            : `<div class="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-secondary-500 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">AI</div>`;
+
+        const bubbleClass = role === 'user'
+            ? 'bg-primary-600 text-white rounded-tr-none'
+            : 'bg-white text-slate-700 rounded-tl-none shadow-sm';
+
+        let formattedText;
+        if (isHtml) {
+            // 如果是 HTML，直接使用（注意：生产环境需注意 XSS 风险，内部系统通常没问题）
+            // 保留换行符的处理，因为我们在后端已经用了 <br>
+            formattedText = text;
+        } else {
+            // 如果是普通文本，进行换行处理并转义（防止注入）
+            formattedText = text.replace(/\n/g, '<br>');
+        }
+
+        div.innerHTML = `
+            ${avatar}
+            <div class="${bubbleClass} p-4 rounded-2xl text-sm leading-relaxed max-w-[80%] break-words">
+                ${formattedText}
+            </div>
+        `;
+        chatBox.appendChild(div);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    chatForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const text = userInput.value.trim();
+        if (!text) return;
+
+        appendMessage('user', text);
+        userInput.value = '';
+        sendBtn.disabled = true;
+        sendBtn.innerText = '思考中...';
+
+        const loadingId = 'loading-' + Date.now();
+        const loadingDiv = document.createElement('div');
+        loadingDiv.id = loadingId;
+        loadingDiv.className = 'flex gap-3';
+        loadingDiv.innerHTML = `
+            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-secondary-500 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">AI</div>
+            <div class="bg-white p-4 rounded-2xl rounded-tl-none shadow-sm text-slate-400 text-sm">
+                正在查询数据库...
+            </div>
+        `;
+        chatBox.appendChild(loadingDiv);
+        chatBox.scrollTop = chatBox.scrollHeight;
+
+        try {
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({message: text})
+            });
+            const data = await res.json();
+
+            document.getElementById(loadingId).remove();
+
+            // 【关键修改】：读取 is_html 标记，传递给 appendMessage
+            const isHtml = data.is_html || false;
+            appendMessage('ai', data.reply, isHtml);
+
+        } catch (err) {
+            document.getElementById(loadingId).remove();
+            appendMessage('ai', '抱歉，网络开小差了，请稍后再试。');
+        } finally {
+            sendBtn.disabled = false;
+            sendBtn.innerText = '发送';
+        }
+    });
+</script>
+{% endblock %}

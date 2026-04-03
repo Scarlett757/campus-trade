@@ -1,0 +1,140 @@
+{% extends 'basic.html' %}
+{% block title %}发布闲置{% endblock %}
+{% block head %}
+    <script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script src="{{ url_for('static',filename='pub.js') }}"></script>
+{% endblock %}
+{% block main %}
+    <!-- 主内容区 -->
+    <main class="container mx-auto px-4 py-8 flex-1">
+        <div class="max-w-3xl mx-auto bg-white rounded-xl shadow-md overflow-hidden">
+            <div class="p-6 md:p-8">
+                <h1 class="text-2xl font-bold text-gray-900 mb-6">发布闲置</h1>
+
+                <!-- 图片上传 -->
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">闲置图片</label>
+                    <div class="flex items-center space-x-4">
+                        <label for="image-upload" id="image-preview-container"
+                               class="w-56 h-56 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 cursor-pointer relative">
+                            <img id="image-preview"
+                                 class="w-full h-full object-cover rounded-lg hidden absolute top-0 left-0 z-10"
+                                 alt="预览图"/>
+                            <div id="image-placeholder" class="text-center px-2 relative z-0">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-gray-400 mx-auto mb-2"
+                                     fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                                </svg>
+                                <span class="text-sm text-gray-500">点击上传图片</span>
+                            </div>
+                            <input type="file" id="image-upload"
+                                   class="hidden absolute top-0 left-0 w-full h-full cursor-pointer" accept="image/*"/>
+                        </label>
+                        <div class="text-sm text-gray-500 max-w-xs">
+                            支持 JPG、PNG 格式，不超过 5MB。
+                        </div>
+                    </div>
+                </div>
+
+                <form class="space-y-6" method="POST" action="/pub" enctype="multipart/form-data">
+                    <!-- 隐藏域：存储上传后的图片文件名 -->
+                    <input type="hidden" id="picture" name="picture" value="">
+
+                    <!-- 分类 -->
+                    <!-- 分类 -->
+<div>
+    <label for="category" class="block text-sm font-medium text-gray-700 mb-2">闲置分类</label>
+    <select id="category" name="category" required
+            class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition">
+        {% for category in categories %}
+            <option value="{{ category.id }}">{{ category.name }}</option>
+        {% endfor %}
+        <!-- 特殊选项：新增分类 -->
+        <option value="new_category" class="text-green-600 font-bold">+ 新增分类</option>
+    </select>
+
+    <!-- 隐藏的新增分类输入框 -->
+    <div id="new-category-input-group" class="hidden mt-3 animate-fade-in">
+        <label for="new_category_name" class="block text-xs font-medium text-green-600 mb-1">请输入新分类名称：</label>
+        <div class="flex space-x-2">
+            <input type="text" id="new_category_name" name="new_category_name"
+                   class="flex-1 px-4 py-2.5 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
+                   placeholder="例如：乐器、宠物用品...">
+        </div>
+        <p class="text-xs text-gray-500 mt-1">输入后点击发布，系统将自动创建该分类。</p>
+    </div>
+</div>
+
+                    <!-- 物品名称 -->
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-gray-700 mb-2">物品名称 <span class="text-red-500">*</span></label>
+                        <input type="text" id="name" name="name" required
+                               class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
+                               placeholder="例如：iPhone 13, 高等数学教材"/>
+                    </div>
+
+                    <!-- 价格 & 数量 (一行两列) -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="price" class="block text-sm font-medium text-gray-700 mb-2">价格 (元) <span class="text-red-500">*</span></label>
+                            <input type="number" id="price" name="price" required min="0" step="0.01"
+                                   class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
+                                   placeholder="0.00"/>
+                        </div>
+                        <div>
+                            <label for="num" class="block text-sm font-medium text-gray-700 mb-2">剩余数量 <span class="text-red-500">*</span></label>
+                            <input type="number" id="num" name="num" required min="1" step="1"
+                                   class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
+                                   placeholder="1" value="1"/>
+                        </div>
+                    </div>
+
+                    <!-- 发货地点 & 发货方式 (一行两列) -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="origin_place" class="block text-sm font-medium text-gray-700 mb-2">发货地点 <span class="text-red-500">*</span></label>
+                            <input type="text" id="origin_place" name="origin_place" required
+                                   class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
+                                   placeholder="例如：XX大学南校区食堂门口"/>
+                        </div>
+                        <div>
+                            <label for="ship_name" class="block text-sm font-medium text-gray-700 mb-2">发货方式 <span class="text-red-500">*</span></label>
+                            <select id="ship_name" name="ship_name" required
+                                    class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition">
+                                <option value="面交">仅限面交</option>
+                                <option value="包邮">包邮</option>
+                                <option value="不包邮">不包邮 (运费自理)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 详细描述 (包含品牌和成色) -->
+                    <div>
+                        <label for="description" class="block text-sm font-medium text-gray-700 mb-2">详细描述 <span class="text-red-500">*</span></label>
+                        <textarea id="description" name="content" required rows="5"
+                                  class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
+                                  placeholder="请描述物品的品牌、成色（如9成新）、购买渠道、是否有瑕疵等。&#10;例如：佳能相机，95成新，箱说全，无划痕。"></textarea>
+                        <p class="text-xs text-gray-500 mt-1">💡 提示：由于系统字段限制，请将“品牌”和“成色”在此处说明。</p>
+                    </div>
+
+                    <!-- 联系电话 -->
+                    <div>
+                        <label for="mobile" class="block text-sm font-medium text-gray-700 mb-2">联系电话 <span class="text-red-500">*</span></label>
+                        <input type="tel" id="mobile" name="mobile" required pattern="[0-9]{11}"
+                               class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
+                               placeholder="请输入11位手机号"/>
+                    </div>
+
+                    <!-- 提交按钮 -->
+                    <div class="pt-4 flex justify-end">
+                        <button type="submit"
+                                class="px-6 py-2.5 bg-green-500 text-white font-medium rounded-lg hover:bg-green-600 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">
+                            立即发布
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+{% endblock %}

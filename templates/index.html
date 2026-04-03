@@ -1,0 +1,355 @@
+{% extends "basic.html" %}
+{% block title %}首页 - 校园二手集市{% endblock %}
+
+{% block head %}
+    <style>
+        /* 隐藏滚动条 */
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /*
+           核心修复：
+           不再使用 transform: translateY，因为它会创建新的层叠上下文，导致子元素（如下拉菜单）被遮挡。
+           我们改用 box-shadow 和 border 的变化来模拟“浮起”效果。
+        */
+        .product-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            /* 默认阴影 */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+        }
+
+        .product-card:hover {
+            /* 不使用 transform，只加深阴影和改变边框颜色 */
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            border-color: #fdba74; /* primary-300 */
+            transform: translateY(-2px); /* 轻微移动通常问题不大，但如果还挡，就删掉这行 */
+            /* 如果依然有遮挡问题，请删除上面这行 transform，仅保留 shadow 变化 */
+        }
+
+        /* 图片缩放效果单独给 img 加，不影响容器层级 */
+        .img-zoom-container {
+            overflow: hidden;
+        }
+
+        .img-zoom-container img {
+            transition: transform 0.5s ease;
+        }
+
+        .product-card:hover .img-zoom-container img {
+            transform: scale(1.1);
+        }
+    </style>
+{% endblock %}
+
+{% block main %}
+    <!-- 顶部：分类导航栏 (美化版) -->
+    <div class="bg-white/80 backdrop-blur-xl border-b border-slate-200 sticky top-20 z-40 rounded-2xl mb-8 shadow-sm mx-4 lg:mx-0 mt-4">
+        <div class="container mx-auto px-4">
+            <div class="flex overflow-x-auto py-3 space-x-4 hide-scrollbar items-center">
+                <!-- 全部按钮 -->
+                <a href="/"
+                   class="flex-shrink-0 px-5 py-2 rounded-full text-sm font-bold transition-all duration-200
+                          {{ 'bg-primary-600 text-white shadow-md shadow-primary-500/30' if category_id is none else 'bg-slate-100 text-slate-600 hover:bg-slate-200' }}">
+                    全部闲置
+                </a>
+
+                <!-- 动态分类列表 -->
+                {% for category in categories %}
+                    <a href="/?category={{ category.id }}"
+                       class="flex-shrink-0 px-5 py-2 rounded-full text-sm font-bold transition-all duration-200
+                              {{ 'bg-primary-600 text-white shadow-md shadow-primary-500/30' if category_id == category.id else 'bg-slate-100 text-slate-600 hover:bg-slate-200' }}">
+                        {{ category.name }}
+                    </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div class="container mx-auto px-4 pb-12">
+
+        {% if not products %}
+            <!-- 空状态：更生动的設計 -->
+            <div class="flex flex-col items-center justify-center py-24 text-center animate-fade-in-up">
+                <div class="relative mb-6">
+                    <div class="absolute inset-0 bg-primary-200 blur-2xl opacity-30 rounded-full"></div>
+                    <div class="relative bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 text-primary-500" fill="none"
+                             viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                  d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+                        </svg>
+                    </div>
+                </div>
+                <h3 class="text-2xl font-black text-slate-800 mb-3">这里空空如也</h3>
+                <p class="text-slate-500 mb-8 max-w-md">
+                    还没有找到心仪的宝贝？不如成为第一个发布闲置的人，让校园流动起来！</p>
+                <a href="{{ url_for('pub') }}"
+                   class="group relative px-8 py-3.5 bg-gradient-to-r from-primary-500 to-secondary-500 text-white font-bold rounded-xl shadow-lg shadow-primary-500/30 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden">
+                    <div class="absolute inset-0 bg-white/20 group-hover:translate-x-full transition-transform duration-500 ease-in-out skew-x-12 -translate-x-full"></div>
+                    <span class="relative flex items-center gap-2">
+                        立即发布闲置
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                             stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                         d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                    </span>
+                </a>
+            </div>
+        {% else %}
+            <!-- 商品网格布局 -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 lg:gap-8">
+                {% for product in products %}
+                    <article class="product-card bg-white rounded-3xl overflow-hidden flex flex-col h-full group">
+
+                        <!-- 图片区域 -->
+                        <div class="img-zoom-container relative h-56 bg-slate-100">
+                            {% if product.picture %}
+                                <img src="{{ product.picture }}"
+                                     alt="{{ product.name }}"
+                                     class="w-full h-full object-cover">
+                            {% else %}
+                                <div class="w-full h-full flex items-center justify-center bg-slate-50">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-slate-300" fill="none"
+                                         viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                    </svg>
+                                </div>
+                            {% endif %}
+
+                            <!-- 渐变遮罩 (增加质感) -->
+                            <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+
+                            <!-- 标签：分类 -->
+                            <span class="absolute top-4 left-4 bg-white/95 backdrop-blur text-xs font-bold text-slate-700 px-3 py-1.5 rounded-lg shadow-sm border border-slate-100">
+                                {{ product.category.name }}
+                            </span>
+
+                            <!-- 标签：库存 -->
+                            {% if product.num > 0 %}
+                                <span class="absolute top-4 right-4 bg-secondary-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-md shadow-secondary-500/30">
+                                    余 {{ product.num }}
+                                </span>
+                            {% else %}
+                                <span class="absolute top-4 right-4 bg-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-md shadow-red-500/30">
+                                    已售罄
+                                </span>
+                            {% endif %}
+                        </div>
+
+                        <!-- 内容区域 -->
+                        <div class="p-5 flex-1 flex flex-col">
+                            <!-- 标题 -->
+                            <h3 class="text-lg font-bold text-slate-800 mb-2 line-clamp-2 leading-snug group-hover:text-primary-600 transition-colors">
+                                <a href="/detail/{{ product.id }}">
+                                    {{ product.name }}
+                                </a>
+                            </h3>
+
+                            <!-- 描述摘要 -->
+                            <p class="text-slate-500 text-sm mb-4 line-clamp-2 flex-1 leading-relaxed">
+                                {{ product.content }}
+                            </p>
+
+                            <!-- 底部信息行 -->
+                            <div class="mt-auto pt-4 border-t border-slate-100 flex items-end justify-between">
+                                <div>
+                                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">当前价格</span>
+                                    <span class="text-2xl font-black text-primary-600">¥{{ "%.2f"|format(product.price) }}</span>
+                                </div>
+                                <div class="text-right">
+                                    <div class="flex items-center justify-end gap-1 text-xs text-slate-400 mb-1">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none"
+                                             viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                  d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                  d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                        </svg>
+                                        <span class="truncate max-w-[80px]"
+                                              title="{{ product.origin_place }}">{{ product.origin_place[:4] }}</span>
+                                    </div>
+                                    <span class="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
+                                        {{ product.pub_date.strftime('%m-%d') }}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <!-- 操作按钮容器：保持居中和间距 -->
+                            <div class="mt-5 flex items-center justify-center space-x-3">
+                                <!-- 收藏按钮：极简线框风格 -->
+                                <button type="button"
+                                        onclick="toggleFavorite(event, {{ product.id }})"
+                                        class="p-2.5 bg-white border border-slate-200
+                   rounded-xl transition-all duration-200
+                   hover:shadow-md hover:shadow-slate-200/50
+                   hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-300
+                   group">
+                                    {% if product.id in favorite_product_ids %}
+                                        <!-- 已收藏：保留红色，但降低饱和度或保持原红，作为页面点缀色 -->
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-500"
+                                             viewBox="0 0 20 20" fill="currentColor">
+                                            <path fill-rule="evenodd"
+                                                  d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z"
+                                                  clip-rule="evenodd"/>
+                                        </svg>
+                                    {% else %}
+                                        <!-- 未收藏：使用浅灰色，融入背景 -->
+                                        <svg xmlns="http://www.w3.org/2000/svg"
+                                             class="h-5 w-5 text-slate-400 group-hover:text-red-400" fill="none"
+                                             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                                        </svg>
+                                    {% endif %}
+                                </button>
+
+                                <!-- 查看详情按钮：纯白底色 + 蓝色文字 -->
+                                <a href="/detail/{{ product.id }}"
+                                   class="flex items-center justify-center
+              w-32 py-2.5 bg-white border border-slate-200
+              text-slate-700 text-sm font-medium rounded-xl
+              shadow-sm hover:shadow-lg hover:shadow-slate-100/80
+              transition-all duration-200
+              hover:bg-slate-50 hover:text-primary-600
+              focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-300">
+                                    查看详情
+                                </a>
+                            </div>
+
+                        </div>
+                    </article>
+                {% endfor %}
+            </div>
+
+            <!-- 分页组件 (美化版) -->
+            {% if pagination and pagination.pages > 1 %}
+                <div class="mt-16 flex justify-center">
+                    <nav class="flex items-center space-x-2 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
+                        <!-- 上一页 -->
+                        {% if pagination.has_prev %}
+                            <a href="?page=
+                                    {{ pagination.prev_num }}{% if category_id %}&category={{ category_id }}{% endif %}"
+                               class="w-10 h-10 flex items-center justify-center rounded-xl text-slate-600 font-bold hover:bg-primary-50 hover:text-primary-600 transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                                     stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                          d="M15 19l-7-7 7-7"/>
+                                </svg>
+                            </a>
+                        {% else %}
+                            <span class="w-10 h-10 flex items-center justify-center rounded-xl text-slate-300 cursor-not-allowed">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                                 stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round"
+                                                             stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                        </span>
+                        {% endif %}
+
+                        <!-- 页码 -->
+                        {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                            {% if page_num %}
+                                {% if page_num == pagination.page %}
+                                    <span class="w-10 h-10 flex items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-secondary-500 text-white font-bold shadow-md shadow-primary-500/30">
+                                    {{ page_num }}
+                                </span>
+                                {% else %}
+                                    <a href="?page=
+                                            {{ page_num }}{% if category_id %}&category={{ category_id }}{% endif %}"
+                                       class="w-10 h-10 flex items-center justify-center rounded-xl text-slate-600 font-bold hover:bg-slate-100 transition-colors">
+                                        {{ page_num }}
+                                    </a>
+                                {% endif %}
+                            {% else %}
+                                <span class="px-2 text-slate-300 font-bold">...</span>
+                            {% endif %}
+                        {% endfor %}
+
+                        <!-- 下一页 -->
+                        {% if pagination.has_next %}
+                            <a href="?page=
+                                    {{ pagination.next_num }}{% if category_id %}&category={{ category_id }}{% endif %}"
+                               class="w-10 h-10 flex items-center justify-center rounded-xl text-slate-600 font-bold hover:bg-primary-50 hover:text-primary-600 transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                                     stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                          d="M9 5l7 7-7 7"/>
+                                </svg>
+                            </a>
+                        {% else %}
+                            <span class="w-10 h-10 flex items-center justify-center rounded-xl text-slate-300 cursor-not-allowed">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                                 stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round"
+                                                             stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        </span>
+                        {% endif %}
+                    </nav>
+                </div>
+            {% endif %}
+        {% endif %}
+    </div>
+
+    <script>
+   async function toggleFavorite(event, productId) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const btn = event.currentTarget;
+    // 获取当前按钮状态：检查内部是否有 text-red-500 (这是已收藏的特征)
+    const isCurrentlyFilled = btn.querySelector('svg')?.classList.contains('text-red-500');
+
+    // 临时禁用按钮防止重复点击
+    btn.disabled = true;
+
+    try {
+        const response = await fetch(`/favorite/toggle/${productId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.message || '操作失败');
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+            // ✅ 关键修改：根据返回结果，直接替换 InnerHTML
+            // 注意：这里的 HTML 字符串必须和后端 Jinja2 模板里的结构完全一致
+
+            if (data.action === 'added') {
+                // 替换为“已收藏”的实心红心代码
+                btn.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-500 fill-current" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd" />
+                    </svg>
+                `;
+            } else {
+                // 替换为“未收藏”的空心灰心代码
+                btn.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-400 group-hover:text-red-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                `;
+            }
+        }
+    } catch (error) {
+        console.error('收藏操作失败:', error);
+        alert('❌ ' + error.message);
+    } finally {
+        btn.disabled = false;
+    }
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,269 @@
+{% extends "basic.html" %}
+{% block title %}免费注册 - 校园二手集市{% endblock %}
+
+{% block head %}
+    <!-- 引入自定义 JS (如果有的话) -->
+    <script src="{{ url_for('static', filename='register.js') }}"></script>
+
+    <style>
+        /* 背景动画装饰 */
+        .bg-decoration {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            z-index: 0;
+            opacity: 0.6;
+            animation: float 10s infinite ease-in-out;
+        }
+        .blob-1 {
+            top: -10%;
+            left: -10%;
+            width: 500px;
+            height: 500px;
+            background: #fdba74; /* primary-300 */
+            animation-delay: 0s;
+        }
+        .blob-2 {
+            bottom: -10%;
+            right: -10%;
+            width: 400px;
+            height: 400px;
+            background: #5eead4; /* teal-300 */
+            animation-delay: 5s;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(30px, 50px); }
+        }
+
+        /* 输入框焦点动画增强 */
+        .input-group:focus-within label {
+            color: #ea580c; /* primary-600 */
+            transform: translateY(-2px);
+        }
+        .input-group:focus-within input {
+            border-color: #fdba74;
+            box-shadow: 0 0 0 4px rgba(251, 146, 60, 0.1);
+        }
+
+        /* 密码切换图标 */
+        .toggle-password {
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .toggle-password:hover {
+            color: #ea580c;
+        }
+
+        /* 验证码按钮禁用状态 */
+        .btn-disabled {
+            background-color: #e2e8f0 !important;
+            color: #94a3b8 !important;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+    </style>
+{% endblock %}
+
+{% block main %}
+<div class="relative min-h-[calc(100vh-300px)] flex items-center justify-center py-12 overflow-hidden">
+    <!-- 背景装饰球 -->
+    <div class="bg-decoration blob-1"></div>
+    <div class="bg-decoration blob-2"></div>
+
+    <div class="relative z-10 w-full max-w-lg px-4">
+        <!-- 头部标语 -->
+        <div class="text-center mb-8 animate-fade-in-down">
+            <h2 class="text-3xl font-black text-slate-800 mb-2">
+                加入 <span class="text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-secondary-600">校园集市</span>
+            </h2>
+            <p class="text-slate-500 text-lg">
+                开启你的绿色循环生活，让闲置变废为宝
+            </p>
+        </div>
+
+        <!-- 表单卡片 -->
+        <div class="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/50 p-8 sm:p-10 animate-fade-in-up">
+
+            <!-- 错误提示区域 (默认隐藏，JS 控制显示) -->
+            <div id="error-alert" class="hidden mb-6 p-4 rounded-xl bg-red-50 border border-red-100 flex items-start gap-3">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                    <h4 class="text-sm font-bold text-red-700">注册失败</h4>
+                    <p id="error-message" class="text-sm text-red-600 mt-1">未知错误，请稍后重试</p>
+                </div>
+            </div>
+
+            <!-- 成功提示区域 (默认隐藏) -->
+            <div id="success-alert" class="hidden mb-6 p-4 rounded-xl bg-green-50 border border-green-100 flex items-start gap-3">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                    <h4 class="text-sm font-bold text-green-700">验证成功</h4>
+                    <p class="text-sm text-green-600 mt-1">验证码正确，请填写剩余信息</p>
+                </div>
+            </div>
+
+            <form id="register-form" class="space-y-5" novalidate>
+
+                <!-- 邮箱 + 验证码 -->
+                <div class="input-group">
+                    <label for="reg-email" class="block text-sm font-bold text-slate-700 mb-1.5 transition-colors">
+                        电子邮箱
+                    </label>
+                    <div class="flex gap-3">
+                        <input type="email" id="reg-email" name="email" required placeholder="name@university.edu.cn"
+                            class="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all duration-200 text-slate-800 placeholder-slate-400">
+
+                        <button type="button" id="send-code"
+                            class="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm rounded-xl transition-all duration-200 whitespace-nowrap border border-slate-200 hover:border-slate-300 active:scale-95">
+                            获取验证码
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 验证码输入 -->
+                <div class="input-group">
+                    <label for="reg-code" class="block text-sm font-bold text-slate-700 mb-1.5 transition-colors">
+                        验证码
+                    </label>
+                    <input type="text" id="reg-code" name="code" required placeholder="6 位数字验证码" maxlength="6"
+                        class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all duration-200 text-slate-800 placeholder-slate-400 tracking-widest font-mono">
+                </div>
+
+                <!-- 用户名 -->
+                <div class="input-group">
+                    <label for="reg-username" class="block text-sm font-bold text-slate-700 mb-1.5 transition-colors">
+                        昵称
+                    </label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                        </div>
+                        <input type="text" id="reg-username" name="username" required placeholder="怎么称呼你？"
+                            class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all duration-200 text-slate-800 placeholder-slate-400">
+                    </div>
+                </div>
+
+                <!-- 密码 -->
+                <div class="input-group">
+                    <label for="reg-password" class="block text-sm font-bold text-slate-700 mb-1.5 transition-colors">
+                        设置密码
+                    </label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                        </div>
+                        <input type="password" id="reg-password" name="password" required placeholder="至少 6 位字符"
+                            class="w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all duration-200 text-slate-800 placeholder-slate-400">
+
+                        <!-- 显示/隐藏密码图标 -->
+                        <button type="button" class="toggle-password absolute inset-y-0 right-0 pr-4 flex items-center" onclick="togglePassword('reg-password')">
+                            <svg id="icon-eye" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-400 hover:text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            <svg id="icon-eye-off" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-400 hover:text-primary-600 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 确认密码 -->
+                <div class="input-group">
+                    <label for="reg-confirm-password" class="block text-sm font-bold text-slate-700 mb-1.5 transition-colors">
+                        确认密码
+                    </label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                        <input type="password" id="reg-confirm-password" name="confirm_password" required placeholder="再次输入密码"
+                            class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all duration-200 text-slate-800 placeholder-slate-400">
+                    </div>
+                </div>
+
+                <!-- 提交按钮 -->
+                <button type="submit" id="submit-btn"
+                    class="w-full mt-2 bg-gradient-to-r from-primary-500 to-secondary-500 hover:from-primary-600 hover:to-secondary-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-primary-500/30 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 flex items-center justify-center gap-2 group">
+                    <span>立即注册</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                    </svg>
+                </button>
+            </form>
+
+            <!-- 底部链接 -->
+            <div class="mt-8 text-center">
+                <p class="text-sm text-slate-500">
+                    已有账号？
+                    <a href="/login" class="font-bold text-primary-600 hover:text-primary-700 hover:underline transition-colors">
+                        立即登录
+                    </a>
+                </p>
+                <p class="text-xs text-slate-400 mt-4">
+                    注册即表示您同意我们的
+                    <a href="#" class="text-slate-500 hover:text-primary-600 underline decoration-dotted">用户协议</a>
+                    和
+                    <a href="#" class="text-slate-500 hover:text-primary-600 underline decoration-dotted">隐私政策</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 简单的密码显示/隐藏逻辑
+    function togglePassword(inputId) {
+        const input = document.getElementById(inputId);
+        const eyeIcon = document.getElementById('icon-eye');
+        const eyeOffIcon = document.getElementById('icon-eye-off');
+
+        if (input.type === 'password') {
+            input.type = 'text';
+            eyeIcon.classList.add('hidden');
+            eyeOffIcon.classList.remove('hidden');
+        } else {
+            input.type = 'password';
+            eyeIcon.classList.remove('hidden');
+            eyeOffIcon.classList.add('hidden');
+        }
+    }
+
+    // 验证码倒计时逻辑 (示例，需结合你的 register.js 实际逻辑)
+    const sendCodeBtn = document.getElementById('send-code');
+    if(sendCodeBtn) {
+        sendCodeBtn.addEventListener('click', function() {
+            // 这里可以调用你的 AJAX 发送验证码逻辑
+            // 模拟倒计时效果
+            let countdown = 60;
+            const originalText = this.innerText;
+
+            this.classList.add('btn-disabled');
+            this.innerText = `${countdown}s 后重发`;
+
+            const timer = setInterval(() => {
+                countdown--;
+                this.innerText = `${countdown}s 后重发`;
+
+                if (countdown <= 0) {
+                    clearInterval(timer);
+                    this.classList.remove('btn-disabled');
+                    this.innerText = '获取验证码';
+                }
+            }, 1000);
+        });
+    }
+</script>
+{% endblock %}
