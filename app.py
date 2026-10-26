@@ -2,8 +2,9 @@ from urllib.request import proxy_bypass
 
 from flask import Flask, render_template, request, jsonify, session, redirect,g,send_from_directory
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import text, MetaData, Integer, String, desc, ForeignKey, Table, Column, Date, Text, Float, DateTime,select,and_,or_
+from sqlalchemy import text, MetaData, Integer, String, desc, ForeignKey, Table, Column, Date, Text, Float, DateTime,select,and_,or_,update
 from sqlalchemy.orm import DeclarativeBase, mapped_column, relationship, Mapped
+from sqlalchemy.exc import IntegrityError
 import config
 from exts import db,migrate,mail
 from models import User,Product,ProductCategory,EmailCode,Favorite,Order,OrderMessage,OrderStatus,Address
@@ -20,6 +21,17 @@ import json
 import re
 app = Flask(__name__)
 app.config.from_object(config)
+
+def create_app(config_name=None):
+    if config_name == 'testing':
+        app.config.update({
+            'TESTING': True,
+            'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
+            'WTF_CSRF_ENABLED': False,
+            'SECRET_KEY': 'testing-secret-key',
+        })
+    return app
+
 
 db.init_app(app)
 migrate.init_app(app,db)
@@ -110,18 +122,25 @@ def login():
     if request.method == "GET":
         return render_template('login.html')
     else:
-        email = request.form.get('email')
-        password = request.form.get('password')
-        remember = request.form.get('remember')
+        data = request.get_json(silent=True) if request.is_json else request.form
+        data = data or {}
+        email = data.get('email')
+        password = data.get('password')
+        remember = data.get('remember')
+        wants_json = request.is_json or request.accept_mimetypes.best == 'application/json'
         user=db.session.scalar(db.select(User).where(User.email == email))
-        if user and user.check_password(password):
+        if user and password and user.check_password(password):
             session['user_id']=user.id
             if remember:
                 # 设置permannent=True，那么31天后会过期
                 session.permanent=True
+            if wants_json:
+                return jsonify({'result': True, 'message': None})
             return redirect("/")
         else:
             print("邮箱或密码错误")
+            if wants_json:
+                return jsonify({'result': False, 'message': '邮箱或密码错误'})
             return redirect("/login")
 @app.post('/logout')
 def logout():
@@ -325,18 +344,34 @@ def media(filename):
 def register():
     if request.method == 'GET':
         return render_template('register.html')
-    else:
-        email=request.form.get('email')
-        username=request.form.get('username')
-        password=request.form.get('password')
-        code=request.form.get('code')
-        code_model=db.session.scalar(db.select(EmailCode).where(EmailCode.email==email,EmailCode.code==code))
-        if not code_model or (datetime.now()-code_model.create_time)>timedelta(minutes=30):
-            return jsonify({"result":False,"message":"请输入正确的验证码"})
-        user=User(email=email,username=username,password=password)
-        db.session.add(user)
+    email = request.form.get('email', '').strip().lower()
+    username = request.form.get('username', '').strip() or email.split('@')[0]
+    password = request.form.get('password', '')
+    code = request.form.get('code', '').strip()
+
+    if (not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email)
+            or not password or not code or not username):
+        return jsonify({'result': False, 'message': '注册信息不完整或格式不正确'})
+    if db.session.scalar(db.select(User.id).where(User.email == email)):
+        return jsonify({'result': False, 'message': '邮箱已注册'})
+
+    code_model = db.session.scalar(
+        db.select(EmailCode)
+        .where(EmailCode.email == email, EmailCode.code == code)
+        .order_by(EmailCode.create_time.desc())
+    )
+    if (not code_model or code_model.create_time > datetime.now()
+            or datetime.now() - code_model.create_time > timedelta(minutes=30)):
+        return jsonify({'result': False, 'message': '请输入正确的验证码'})
+
+    try:
+        db.session.add(User(email=email, username=username, password=password))
+        db.session.delete(code_model)
         db.session.commit()
-        return jsonify({"result":True,"message":None})
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({'result': False, 'message': '邮箱已注册'})
+    return jsonify({'result': True, 'message': None})
 @app.route('/detail/<int:product_id>')
 def detail(product_id):
     product = db.session.get(Product, product_id)
@@ -363,12 +398,11 @@ def detail(product_id):
 def get_email_code():
     # 这段代码定义了一个 GET 类型的 API 接口，路径是 /email/code，核心功能是：接收前端传递的 email 参数，检查该参数是否为空；如果为空则返回失败提示，否则返回成功提示（这通常是 “发送邮箱验证码” 接口的第一步校验逻辑）
     # request.args 是 FastAPI 中获取 URL 问号后查询参数 的方式（比如 http://localhost:8000/email/code?email=test@163.com 中的 email=test@163.com）。
-    email=request.args.get("email")
-    if not email:
-        return jsonify({"request":False,"message":"email is empty！"})
+    email = request.args.get('email', '').strip().lower()
+    if not re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email):
+        return jsonify({'request': False, 'message': '请输入有效邮箱'})
     # 生成验证码
-    source=string.digits*4
-    code="".join(random.sample(source,4))
+    code = ''.join(random.choices(string.digits, k=6))
     message=Message(
         subject="[新鲜菜园]注册验证码",
         recipients=[email],
@@ -377,6 +411,7 @@ def get_email_code():
     try:
         mail.send(message)
     except Exception as e:
+        db.session.rollback()
         return jsonify({"request":False,"message":str(e)})
     # 实际生产环境中使用memcached/redis缓存这种五分钟就会过期的不重要数据
     code_model=EmailCode(code=code,email=email)
@@ -689,7 +724,9 @@ def get_addresses():
 @app.route('/api/address', methods=['POST'])
 @login_required
 def add_address():
-    data = request.json
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': '请求数据无效'}), 400
     # 如果设为默认，先将该用户其他地址取消默认
     if data.get('is_default'):
         Address.query.filter_by(user_id=g.user.id, is_default=True).update({'is_default': False})
@@ -717,7 +754,9 @@ def update_address(addr_id):
     if addr.user_id != g.user.id:
         return jsonify({'error': '无权操作'}), 403
 
-    data = request.json
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': '请求数据无效'}), 400
     # 如果设为默认，先取消其他默认
     if data.get('is_default') and not addr.is_default:
         Address.query.filter_by(user_id=g.user.id, is_default=True).update({'is_default': False})
@@ -774,20 +813,21 @@ def my_orders_page():
 @app.route('/api/order/create', methods=['POST'])
 @login_required
 def create_order():
-    data = request.json
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "请求数据无效"}), 400
     product_id = data.get('product_id')
     address_id = data.get('address_id')
 
-    if not product_id or not address_id:
+    if (not isinstance(product_id, int) or isinstance(product_id, bool)
+            or not isinstance(address_id, int) or isinstance(address_id, bool)
+            or product_id <= 0 or address_id <= 0):
         return jsonify({"error": "缺少商品或地址信息"}), 400
 
     try:
-        product = Product.query.get(product_id)
+        product = db.session.get(Product, product_id)
         if not product:
             return jsonify({"error": "商品不存在"}), 404
-
-        if product.num < 1:
-            return jsonify({"error": "库存不足，商品已售罄"}), 400
 
         # 👇 修改：检查是否是自己卖的商品
         if product.publisher_id == g.user.id:
@@ -797,6 +837,19 @@ def create_order():
         address = Address.query.filter_by(id=address_id, user_id=g.user.id).first()
         if not address:
             return jsonify({"error": "地址无效或不属于您"}), 400
+
+        stock_update = db.session.execute(
+            update(Product)
+            .where(
+                Product.id == product.id,
+                Product.num > 0,
+                Product.publisher_id != g.user.id,
+            )
+            .values(num=Product.num - 1)
+        )
+        if stock_update.rowcount != 1:
+            db.session.rollback()
+            return jsonify({"error": "库存不足，商品已售罄"}), 400
 
         # 生成订单号
         order_no = f"ORD{datetime.now().strftime('%Y%m%d%H%M%S')}{str(uuid.uuid4())[:4].upper()}"
@@ -812,11 +865,8 @@ def create_order():
             status=OrderStatus.PAID
         )
 
-        # 扣减库存
-        product.num -= 1
-
         db.session.add(new_order)
-        db.session.commit()
+        db.session.flush()
 
         # 可选：给商家发一条系统消息通知
         sys_msg = OrderMessage(
@@ -893,10 +943,14 @@ def ship_order(order_id):
     if order.seller_id != g.user.id:
         return jsonify({"error": "无权操作，您不是该商品的卖家"}), 403
 
-    if order.status != OrderStatus.PAID:
+    transition = db.session.execute(
+        update(Order)
+        .where(Order.id == order_id, Order.seller_id == g.user.id, Order.status == OrderStatus.PAID)
+        .values(status=OrderStatus.SHIPPED)
+    )
+    if transition.rowcount != 1:
+        db.session.rollback()
         return jsonify({"error": f"订单状态为 ({order.status.value})，不允许发货"}), 400
-
-    order.status = OrderStatus.SHIPPED
 
     # 发送系统通知给买家
     notify_msg = OrderMessage(
@@ -922,14 +976,15 @@ def order_messages(order_id):
         return jsonify({"error": "无权访问此订单消息"}), 403
 
     if request.method == 'POST':
-        content = request.json.get('content')
-        if not content:
+        data = request.get_json(silent=True)
+        content = data.get('content') if isinstance(data, dict) else None
+        if not isinstance(content, str) or not content.strip():
             return jsonify({"error": "内容不能为空"}), 400
 
         msg = OrderMessage(
             order_id=order.id,
             sender_id=g.user.id,
-            content=content,
+            content=content.strip(),
             msg_type='text'
         )
         db.session.add(msg)
@@ -950,6 +1005,11 @@ def order_messages(order_id):
 @app.route('/order/<int:order_id>/chat')
 @login_required
 def order_chat_page(order_id):
+    order = db.session.get(Order, order_id)
+    if not order:
+        return "订单不存在", 404
+    if order.buyer_id != g.user.id and order.seller_id != g.user.id:
+        return jsonify({"error": "无权访问此订单"}), 403
     return render_template('order_chat.html',order_id=order_id)
 
 
