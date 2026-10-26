@@ -199,13 +199,13 @@ jobs:
 
 #### 如何验证与当前结论
 
-首次远端运行确认 workflow 能触发并安装依赖，但 pytest 在导入阶段失败，暴露出测试数据库配置晚于应用初始化的问题；按上面方式改为导入应用前注入临时 SQLite URI 后，本地在 Conda `flask-env` 中重新运行 `python -m pytest -q`，47 个参数化展开用例通过。将此修复推送后，还需要查看新 Actions run 的最终状态，才能确认远端回归成功。
+首次远端运行确认 workflow 能触发并安装依赖，但 pytest 在导入阶段失败，暴露出测试数据库配置晚于应用初始化的问题；按上面方式改为导入应用前注入临时 SQLite URI 后，本地在 Conda `flask-env` 中重新运行 `python -m pytest -q`，47 个参数化展开用例通过。修复提交 `1cb4d0b` 推送后，GitHub Actions run `40270783302` 成功，远端 pytest 同样为 47 passed（10.51 秒）。
 
 另外，当前 workflow 会运行同一套完整测试，但**尚未配置 GitHub branch protection 来强制要求该检查通过后才能合并**。如果要把它做成真正的合并门禁，需要在仓库设置中启用 branch protection/ruleset，并将对应的 `pytest` check 设为 required status check。
 
 #### CI 部分的面试回答示例
 
-> 我把 workflow 放在 `.github/workflows/tests.yml`，监听 main/master 的 push、面向这两个分支的 PR，以及手动触发。runner 使用 Ubuntu 和 Python 3.10，先 checkout 代码、按 `requirements-test.txt` 安装依赖，再运行 `python -m pytest -q`。第一次远端运行暴露了测试 fixture 配置 SQLite 太晚的问题：应用模块导入时已经按默认 MySQL 配置初始化 SQLAlchemy。之后我让测试入口在导入应用前设置临时 SQLite URI，并增加 engine 后端保护，确保 CI 不需要 MySQL 驱动或生产数据库。本地 47 条参数化展开用例通过；修复提交后的远端状态应以对应 Actions run 为准，而且仓库尚未配置 branch protection，所以不把它描述成强制合并门禁。
+> 我把 workflow 放在 `.github/workflows/tests.yml`，监听 main/master 的 push、面向这两个分支的 PR，以及手动触发。runner 使用 Ubuntu 和 Python 3.10，先 checkout 代码、按 `requirements-test.txt` 安装依赖，再运行 `python -m pytest -q`。第一次远端运行暴露了测试 fixture 配置 SQLite 太晚的问题：应用模块导入时已经按默认 MySQL 配置初始化 SQLAlchemy。之后我让测试入口在导入应用前设置临时 SQLite URI，并增加 engine 后端保护，确保 CI 不需要 MySQL 驱动或生产数据库。修复后本地 47 条用例通过，GitHub Actions run `40270783302` 也通过了 47 条；仓库尚未配置 branch protection，所以这项检查还不是强制合并门禁。
 
 此外，README 加入本地测试命令，`docs/qa/` 保存测试计划、用例集、缺陷报告、测试总结和面试复盘。
 
@@ -217,7 +217,7 @@ jobs:
 conda run -n flask-env python -m pytest -q
 ```
 
-本次实测结果为 **47 passed、0 failed**，耗时约 84 秒。结构上：
+本次实测结果为 **47 passed、0 failed**，本地耗时约 11 秒；GitHub Actions Ubuntu runner 耗时 10.51 秒。结构上：
 
 - 9 个认证相关用例（包含参数化展开）。
 - 38 个 HTTP API 集成用例（包含订单、并发、安全、验证码和错误输入场景）。
@@ -230,7 +230,7 @@ conda run -n flask-env python -m pytest -q
 
 ### 约 30 秒版本
 
-> 我在这个 Flask 校园二手交易项目里负责核心交易链路的质量保障，围绕注册验证码、下单、库存竞争、发货状态和资源越权设计接口测试。我使用 pytest 管理测试数据和清理，用 requests 通过真实 HTTP 服务做集成测试；邮件通过 mock 隔离，数据库使用临时 SQLite。测试暴露并推动修复了库存并发扣减、订单事务部分提交、聊天页面对象级授权和验证码重放等问题。最终本地 47 条参数化展开用例全部通过，并添加了 GitHub Actions 工作流；远端 Actions 尚未实际触发，MySQL 并发压测也列为上线前工作。
+> 我在这个 Flask 校园二手交易项目里负责核心交易链路的质量保障，围绕注册验证码、下单、库存竞争、发货状态和资源越权设计接口测试。我使用 pytest 管理测试数据和清理，用 requests 通过真实 HTTP 服务做集成测试；邮件通过 mock 隔离，数据库使用临时 SQLite。测试暴露并推动修复了库存并发扣减、订单事务部分提交、聊天页面对象级授权和验证码重放等问题。最终本地和 GitHub Actions 各 47 条参数化展开用例全部通过；MySQL 并发压测仍列为上线前工作。
 
 ### 约 2 分钟版本
 
@@ -238,7 +238,7 @@ conda run -n flask-env python -m pytest -q
 >
 > 下单并发方面，我发现“先查库存、再在 Python 中减一”存在 check-then-act 竞态，所以将库存扣减改成带库存大于零条件的原子 SQL 更新，并检查受影响行数。同时把扣库存、写订单和系统消息放进一个事务，通过并发请求和提交失败注入分别验证不超卖与整体回滚。越权方面，除了 API，还检查聊天页面本身的订单参与者权限，避免只保护接口却泄露页面入口。
 >
-> 自动化采用 pytest fixture 做临时数据库和数据清理，requests.Session 做独立登录态，邮件调用 mock 掉。47 个参数化展开用例在本地全部通过，并增加了 Actions 工作流。当前限制是并发只在 SQLite 环境回归、远端 Actions 未触发，完成/取消状态迁移和验证码频率限制也不在本次范围。
+> 自动化采用 pytest fixture 做临时数据库和数据清理，requests.Session 做独立登录态，邮件调用 mock 掉。47 个参数化展开用例在本地和 GitHub Actions 均通过。当前限制是并发只在 SQLite 环境回归，完成/取消状态迁移和验证码频率限制也不在本次范围。
 
 ## 5. 面试官可能追问
 
