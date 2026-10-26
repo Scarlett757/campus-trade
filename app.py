@@ -26,7 +26,6 @@ def create_app(config_name=None):
     if config_name == 'testing':
         app.config.update({
             'TESTING': True,
-            'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
             'WTF_CSRF_ENABLED': False,
             'SECRET_KEY': 'testing-secret-key',
         })

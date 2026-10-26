@@ -58,10 +58,12 @@
 
 1. 用 `requests` 通过 HTTP 调用，而不是只直接调用 Flask view 函数，可以覆盖路由、请求解析、session cookie、认证装饰器和响应序列化等集成行为。
 2. 每个测试用独立 session，避免登录 cookie 在用例间串用；每个测试前清数据，降低执行顺序依赖。
-3. 测试数据库放在 pytest 临时目录，避免访问开发用 MySQL，也让测试结束后可清理。
+3. 测试数据库放在独立的系统临时目录，避免访问开发用 MySQL，也让测试结束后可清理。
 4. 并发测试用 SQLite **文件数据库**而不是内存数据库，让不同线程/连接访问同一份持久化测试数据。
 5. 邮件发送用 `unittest.mock.patch` 替代真实 SMTP，测试可以确认“是否发送、发送失败后是否写验证码”，又不会真的外发邮件。
 6. 测试 HTTP server 在 Windows 上从一段明确端口范围内挑选可用端口，避免随机端口恰好撞上 Windows 客户端临时端口范围。
+
+**CI 首次运行发现的环境问题：**根目录 `conftest.py` 原先先导入 `app`，而 `app.py` 在模块导入时就根据 `config.py` 初始化 SQLAlchemy。GitHub Linux runner 没有安装 MySQL 驱动，因此在 pytest fixture 还没来得及把数据库切到 SQLite 前，就因缺少 `MySQLdb` 而导入失败。修复后，测试入口先创建唯一的临时 SQLite 文件路径，并通过 `SQLALCHEMY_DATABASE_URI` 环境变量在导入 `app` 之前设置数据库 URI；`config.py` 支持该环境变量覆盖默认 MySQL URI。应用初始化后，fixture 还会检查实际 SQLAlchemy engine 后端必须是 SQLite，不符合就立即失败，避免测试意外连接开发数据库。生产环境没有设置该变量时仍使用项目默认数据库配置。
 
 **测试边界：**`create_app('testing')` 提供测试配置入口，但当前仍复用模块级 Flask app，不是完全隔离的多实例应用工厂。更成熟的长期改造是把扩展初始化和路由注册迁入真正的 `create_app`，让测试和生产实例完全分离。
 
@@ -197,13 +199,13 @@ jobs:
 
 #### 如何验证与当前结论
 
-本地在 Conda `flask-env` 中运行 `python -m pytest -q`，47 个参数化展开用例通过；这验证了测试集和运行命令。本次没有推送后观察 GitHub Actions 远端 job，因此只能准确地说“已配置工作流，并在本地验证了同一测试命令”，不能说“GitHub Actions 远端运行已通过”。远端验证应在提交/PR 后打开 Actions 页面确认 job 触发、依赖安装、pytest 结果和最终状态检查。
+首次远端运行确认 workflow 能触发并安装依赖，但 pytest 在导入阶段失败，暴露出测试数据库配置晚于应用初始化的问题；按上面方式改为导入应用前注入临时 SQLite URI 后，本地在 Conda `flask-env` 中重新运行 `python -m pytest -q`，47 个参数化展开用例通过。将此修复推送后，还需要查看新 Actions run 的最终状态，才能确认远端回归成功。
 
 另外，当前 workflow 会运行同一套完整测试，但**尚未配置 GitHub branch protection 来强制要求该检查通过后才能合并**。如果要把它做成真正的合并门禁，需要在仓库设置中启用 branch protection/ruleset，并将对应的 `pytest` check 设为 required status check。
 
 #### CI 部分的面试回答示例
 
-> 我把 workflow 放在 `.github/workflows/tests.yml`，监听 main/master 的 push、面向这两个分支的 PR，以及手动触发。runner 使用 Ubuntu 和 Python 3.10，先 checkout 代码、按 `requirements-test.txt` 安装依赖，再运行 `python -m pytest -q`。我启用了基于依赖清单的 pip 缓存，并把 workflow 权限限制为只读。测试使用临时 SQLite 和 mock 邮件，所以 CI 不需要生产数据库或 SMTP 凭证。本地 47 条参数化展开用例通过，但当时没有触发远端 Actions，也没有配置 branch protection，因此我会把它表述为“已配置 CI 工作流”，不会夸大为“远端 CI 已验证”或“已成为强制合并门禁”。
+> 我把 workflow 放在 `.github/workflows/tests.yml`，监听 main/master 的 push、面向这两个分支的 PR，以及手动触发。runner 使用 Ubuntu 和 Python 3.10，先 checkout 代码、按 `requirements-test.txt` 安装依赖，再运行 `python -m pytest -q`。第一次远端运行暴露了测试 fixture 配置 SQLite 太晚的问题：应用模块导入时已经按默认 MySQL 配置初始化 SQLAlchemy。之后我让测试入口在导入应用前设置临时 SQLite URI，并增加 engine 后端保护，确保 CI 不需要 MySQL 驱动或生产数据库。本地 47 条参数化展开用例通过；修复提交后的远端状态应以对应 Actions run 为准，而且仓库尚未配置 branch protection，所以不把它描述成强制合并门禁。
 
 此外，README 加入本地测试命令，`docs/qa/` 保存测试计划、用例集、缺陷报告、测试总结和面试复盘。
 

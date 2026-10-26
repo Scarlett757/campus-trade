@@ -11,7 +11,10 @@ MYSQL_PORT=3306
 MYSQL_USER='root'
 MYSQL_PASSWORD='yanjing123456'
 MYSQL_DATABASE='campus_trade'
-SQLALCHEMY_DATABASE_URI = f"mysql+mysqldb://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}?charset=utf8mb4"
+SQLALCHEMY_DATABASE_URI = os.environ.get(
+    'SQLALCHEMY_DATABASE_URI',
+    f"mysql+mysqldb://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}?charset=utf8mb4",
+)
 
 # 邮箱配置
 MAIL_SERVER="smtp.qq.com"   # 邮件服务商 这里用的qq
