@@ -3,6 +3,3 @@ pytestnote/
 report/
 __pycache__/
 .pytest_cache/
-docs/qa/interview-walkthrough.md
-docs/qa/defect-report.md
-docs/qa/test-summary.md
